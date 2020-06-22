@@ -1,0 +1,9 @@
+[package]
+name = "load_balancer"
+version = "0.1.0"
+authors = ["markpedersen"]
+edition = "2018"
+
+[dependencies]
+hyper = "0.13.6"
+tokio = "0.2.21"
