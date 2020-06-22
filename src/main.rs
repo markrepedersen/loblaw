@@ -1,3 +1,7 @@
+mod config;
+
+use config::Config;
+use std::fs::read_to_string;
 use tokio::net::TcpListener;
 use tokio::{prelude::*, spawn};
 
@@ -5,7 +9,11 @@ use tokio::{prelude::*, spawn};
 fn health_check() {}
 
 // Config file should contain the list of server addresses.
-fn parse_config_file() {}
+fn parse_config_file() -> Result<Config, Box<dyn std::error::Error>> {
+    let contents: String = read_to_string("config.toml")?;
+    let config: Config = toml::from_str(contents.as_str())?;
+    Ok(config)
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
