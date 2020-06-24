@@ -1,0 +1,11 @@
+[servers.main1]
+ip = "8.8.8.8"
+hostname = "mark_host"
+
+[servers.main2]
+ip = "8.8.8.9"
+hostname = "kevin_host"
+
+[servers.main3]
+ip = "8.8.8.10"
+hostname = "bob_host"

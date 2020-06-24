@@ -1,42 +1,32 @@
+#[macro_use]
+extern crate lazy_static;
+
+mod client;
 mod config;
+mod health_check;
 
 use config::Config;
-use std::fs::read_to_string;
-use tokio::net::TcpListener;
-use tokio::{prelude::*, spawn};
+use tokio::runtime::Runtime;
 
-// The load balancer should run a health check on each server periodically.
-fn health_check() {}
-
-// Config file should contain the list of server addresses.
-fn parse_config_file() -> Result<Config, Box<dyn std::error::Error>> {
-    let contents: String = read_to_string("config.toml")?;
-    let config: Config = toml::from_str(contents.as_str())?;
-    Ok(config)
+lazy_static! {
+    static ref Args: Config = config::parse_config_file().unwrap();
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut listener = TcpListener::bind("127.0.0.1:8080").await?;
-    loop {
-        let (mut socket, _) = listener.accept().await?;
-        spawn(async move {
-            let mut buf = [0; 1024];
-            loop {
-                let n = match socket.read(&mut buf).await {
-                    Ok(n) if n == 0 => return,
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut health_check_rt = Runtime::new()?;
+    let mut request_forwarder_rt = Runtime::new()?;
 
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
-                }
-            }
-        });
-    }
+    health_check_rt.block_on(async {
+        if let Err(_) = health_check::health_check(&Args).await {
+            eprintln!("Health check thread error.");
+        }
+    });
+
+    request_forwarder_rt.block_on(async {
+        if let Err(_) = client::handle_requests().await {
+            eprintln!("Client request thread error.");
+        }
+    });
+
+    Ok(())
 }
