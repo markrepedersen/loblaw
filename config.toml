@@ -1,11 +1,23 @@
+ip = "localhost"
+port = 8080
+
+[servers]
+
 [servers.main1]
-ip = "8.8.8.8"
+ip = "localhost"
 hostname = "mark_host"
 
 [servers.main2]
-ip = "8.8.8.9"
+ip = "localhost"
 hostname = "kevin_host"
 
 [servers.main3]
-ip = "8.8.8.10"
+ip = "localhost"
 hostname = "bob_host"
+
+[health_check]
+port = 8080
+timeout = 10
+interval = 5
+healthy_threshold = 10
+unhealthy_threshold = 10

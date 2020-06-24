@@ -15,7 +15,7 @@ use tokio::{
 };
 
 lazy_static! {
-    static ref Args: Config = config::parse_config_file().unwrap();
+    static ref ARGS: Config = Config::parse().unwrap();
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut request_forwarder_rt = Runtime::new()?;
 
     health_check_rt.block_on(async {
-        if let Err(_) = health_check::health_check(&Args).await {
+        if let Err(_) = health_check::health_check(&ARGS).await {
             eprintln!("Health check thread error.");
         }
     });
