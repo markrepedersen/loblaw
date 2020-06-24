@@ -9,7 +9,6 @@ mod algorithm {
     mod round_robin;
 }
 
-use algorithm::algorithm::build;
 use config::Config;
 use tokio::{
     runtime::Runtime,
@@ -37,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = config::parse_config_file()?;
     // todo: validate balancing method
-    // let balancer = algorithm::Rou
-    let algo = build("rr".to_string(), config.servers);
+    // let algo = build("rr".to_string(), config.servers);
+
     Ok(())
 }
