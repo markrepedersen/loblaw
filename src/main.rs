@@ -10,9 +10,7 @@ mod algorithm {
 }
 
 use config::Config;
-use tokio::{
-    runtime::Runtime,
-};
+use tokio::runtime::Runtime;
 
 lazy_static! {
     static ref ARGS: Config = Config::parse().unwrap();
@@ -33,10 +31,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Client request thread error.");
         }
     });
-
-    let config = config::parse_config_file()?;
-    // todo: validate balancing method
-    // let algo = build("rr".to_string(), config.servers);
 
     Ok(())
 }
