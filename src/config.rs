@@ -1,19 +1,19 @@
 use serde::Deserialize;
-use std::{collections::HashMap, fs::read_to_string};
+use std::{fs::read_to_string};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub ip: String,
     pub port: u16,
     pub replicas: Option<usize>,
-    pub servers: HashMap<String, Server>,
+    pub servers: Vec<Server>,
     pub health_check: HealthCheck,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Server {
     pub ip: String,
-    pub hostname: String,
+    pub port: u16,
 }
 
 #[derive(Deserialize, Debug, Clone)]

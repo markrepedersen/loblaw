@@ -1,19 +1,17 @@
 ip = "localhost"
 port = 8080
 
-[servers]
-
-[servers.main1]
+[[servers]]
 ip = "localhost"
-hostname = "mark_host"
+port = 1232
 
-[servers.main2]
+[[servers]]
 ip = "localhost"
-hostname = "kevin_host"
+port = 1233
 
-[servers.main3]
+[[servers]]
 ip = "localhost"
-hostname = "bob_host"
+port = 1234
 
 [health_check]
 port = 8080

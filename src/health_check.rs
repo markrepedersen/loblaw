@@ -12,7 +12,7 @@ use tokio::{
 
 pub async fn health_check(config: &'static Config) -> Result<(), Box<dyn std::error::Error>> {
     let limit = Duration::from_secs(config.health_check.timeout);
-    for (_, server) in config.servers.iter() {
+    for server in config.servers.iter() {
         spawn(async move {
             loop {
                 let (start, interval, stream) = (
