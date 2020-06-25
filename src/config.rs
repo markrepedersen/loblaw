@@ -8,6 +8,7 @@ pub struct Config {
     pub replicas: Option<usize>,
     pub servers: Vec<Server>,
     pub health_check: HealthCheck,
+    pub method: String
 }
 
 #[derive(Deserialize, Debug, Clone)]

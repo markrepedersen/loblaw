@@ -1,5 +1,6 @@
 ip = "localhost"
 port = 8080
+method = "roundrobin"
 
 [[servers]]
 ip = "localhost"
