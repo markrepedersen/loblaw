@@ -1,41 +1,35 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod client;
 mod config;
 mod health_check;
+mod request;
 mod algorithm {
     pub mod algorithm;
     mod round_robin;
 }
 
 use config::Config;
-use tokio::runtime::Runtime;
+use std::net::SocketAddr;
+use tokio::try_join;
 
 lazy_static! {
     static ref ARGS: Config = Config::parse().unwrap();
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut health_check_rt = Runtime::new()?;
-    let mut request_forwarder_rt = Runtime::new()?;
-
-    // let mut algo = algorithm::algorithm::build(ARGS.method.as_str().to_string(), &ARGS);
-    // let s = algo.select()?;
-    // println!("ip: {}, port: {}", s.ip, s.port);
-
-    health_check_rt.block_on(async {
-        if let Err(_) = health_check::health_check(&ARGS).await {
-            eprintln!("Health check thread error.");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    match format!("{}:{}", ARGS.ip, ARGS.port).parse::<SocketAddr>() {
+        Ok(addr) => {
+            if let Err(e) = try_join!(
+                request::handle_requests(&addr),
+                health_check::health_check(&ARGS),
+            ) {
+                eprintln!("Error running server: {}.", e);
+            }
         }
-    });
-
-    request_forwarder_rt.block_on(async {
-        if let Err(_) = client::handle_requests().await {
-            eprintln!("Client request thread error.");
-        }
-    });
-
+        Err(e) => eprintln!("Invalid address: {}.", e),
+    }
 
     Ok(())
 }
