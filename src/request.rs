@@ -1,26 +1,43 @@
+use crate::algorithm::algorithm::Strategy;
 use {
     hyper::{
         service::{make_service_fn, service_fn},
-        Body, Client, Request, Response, Server,
+        Body, Client, Response, Server,
     },
-    std::{error::Error, net::SocketAddr},
+    std::net::SocketAddr,
 };
 
-async fn forward_request(req: Request<Body>) -> hyper::Result<Response<Body>> {
-    /// TODO: Pick the server that the request should be sent to.
-    let res = Client::new().request(req).await?;
-    /// TODO: Switch IPs so response goes to correct place.
-    Ok(res)
+pub struct RequestHandler {
+    addr: SocketAddr,
+    strategy: Strategy,
 }
 
-pub async fn handle_requests(addr: &SocketAddr) -> Result<(), Box<dyn Error>> {
-    let server = Server::bind(addr).serve(make_service_fn(|_| async {
-        Ok::<_, hyper::Error>(service_fn(forward_request))
-    }));
-
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+impl RequestHandler {
+    pub fn new(addr: SocketAddr, strategy: Strategy) -> Self {
+        Self { addr, strategy }
     }
 
-    Ok(())
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        let forwarder_service = make_service_fn(move |_| async move {
+            Ok::<_, hyper::Error>(service_fn(move |req| async move {
+                match Client::new().request(req).await {
+                    Ok(res) => Ok::<_, hyper::Error>(res),
+                    Err(e) => Ok::<_, hyper::Error>(Response::new(Body::from(format!(
+                        "Request failed due to '{}'",
+                        e
+                    )))),
+                }
+            }))
+        });
+
+        let server = Server::bind(&self.addr).serve(forwarder_service);
+
+        println!("Listening on http://{}", self.addr);
+
+        if let Err(e) = server.await {
+            eprintln!("server error: {}", e);
+        }
+
+        Ok(())
+    }
 }

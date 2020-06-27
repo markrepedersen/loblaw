@@ -1,20 +1,21 @@
 use serde::Deserialize;
-use std::{fs::read_to_string};
+use std::fs::read_to_string;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub ip: String,
     pub port: u16,
+    pub strategy: Option<String>,
     pub replicas: Option<usize>,
     pub servers: Vec<Server>,
-    pub health_check: HealthCheck,
-    pub method: String
+    pub method: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Server {
     pub ip: String,
     pub port: u16,
+    pub health_check: HealthCheck,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -27,7 +28,6 @@ pub struct HealthCheck {
 }
 
 impl Config {
-    // Config file should contain the list of server addresses.
     pub fn parse() -> Result<Self, Box<dyn std::error::Error>> {
         let contents: String = read_to_string("config.toml")?;
         let config: Config = toml::from_str(contents.as_str())?;
