@@ -5,10 +5,8 @@ use std::fs::read_to_string;
 pub struct Config {
     pub ip: String,
     pub port: u16,
-    pub strategy: Option<String>,
-    pub replicas: Option<usize>,
+    pub strategy: String,
     pub servers: Vec<Server>,
-    pub method: String,
     pub health_check: HealthCheck,
 }
 

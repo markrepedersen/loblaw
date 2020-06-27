@@ -5,6 +5,7 @@ authors = ["markpedersen"]
 edition = "2018"
 
 [dependencies]
+lazy_static = "1.4.0"
 hyper = "0.13.6"
 tokio = { version = "0.2.21", features = ["full"] }
 toml = "0.5.6"

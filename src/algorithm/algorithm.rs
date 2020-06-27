@@ -1,9 +1,9 @@
+use std::sync::Arc;
 use {
     crate::{
         algorithm::{random::Random, round_robin::RoundRobin},
-        config::{Config, Server},
+        config::Server,
     },
-    std::str::FromStr,
     strum_macros::EnumString,
 };
 
@@ -24,12 +24,9 @@ pub trait Algorithm {
     fn select(&mut self) -> Result<&Server, Box<dyn std::error::Error>>;
 }
 
-pub fn build(config: &'static Config, strategy: Strategy) -> Box<dyn Algorithm> {
+pub fn build(strategy: Strategy) -> Arc<dyn Algorithm + Send + Sync> {
     match strategy {
-        Strategy::Random => Box::new(Random { config }),
-        Strategy::RoundRobin | _ => Box::new(RoundRobin {
-            config,
-            current_server: 0,
-        }),
+        Strategy::Random => Arc::new(Random {}),
+        Strategy::RoundRobin | _ => Arc::new(RoundRobin { current_server: 0 }),
     }
 }

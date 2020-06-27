@@ -1,4 +1,3 @@
-use crate::algorithm::algorithm::Strategy;
 use {
     hyper::{
         service::{make_service_fn, service_fn},
@@ -9,12 +8,11 @@ use {
 
 pub struct RequestHandler {
     addr: SocketAddr,
-    strategy: Strategy,
 }
 
 impl RequestHandler {
-    pub fn new(addr: SocketAddr, strategy: Strategy) -> Self {
-        Self { addr, strategy }
+    pub fn new(addr: SocketAddr) -> Self {
+        Self { addr }
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
