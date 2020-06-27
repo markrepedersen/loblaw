@@ -9,18 +9,17 @@ pub struct Config {
     pub replicas: Option<usize>,
     pub servers: Vec<Server>,
     pub method: String,
+    pub health_check: HealthCheck,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Server {
     pub ip: String,
     pub port: u16,
-    pub health_check: HealthCheck,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct HealthCheck {
-    pub port: u16,
     pub timeout: u64,
     pub interval: u64,
     pub healthy_threshold: usize,

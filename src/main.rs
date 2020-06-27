@@ -15,10 +15,11 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::try_join;
 
-async fn handle_requests(config: Config) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_requests(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let strategy = config.strategy.clone();
     match format!("{}:{}", config.ip, config.port).parse::<SocketAddr>() {
         Ok(addr) => {
-            let strategy = match config.strategy {
+            let strategy = match strategy {
                 Some(s) => Strategy::from_str(s.as_str())?,
                 None => Strategy::RoundRobin,
             };
@@ -29,15 +30,17 @@ async fn handle_requests(config: Config) -> Result<(), Box<dyn std::error::Error
     }
 }
 
-async fn health_check(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-    let handler = HealthCheck::new(config.ip, config.port, config.servers);
+async fn health_check(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let ip = config.ip.clone();
+    let servers = config.servers.clone();
+    let handler = HealthCheck::new(ip, config.port, servers);
     handler.run().await
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse()?;
-    if let Err(e) = try_join!(handle_requests(config), health_check(config)) {
+    if let Err(e) = try_join!(handle_requests(&config), health_check(&config)) {
         panic!("Error running server: {}.", e);
     }
 
