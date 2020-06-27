@@ -25,7 +25,7 @@ pub trait Algorithm {
 }
 
 pub fn build(config: &'static Config) -> Box<dyn Algorithm> {
-    let strategy = Strategy::from_str(config.strategy.unwrap()).unwrap();
+    let strategy = Strategy::from_str(config.strategy.unwrap().as_str()).unwrap();
     Box::new(match strategy {
         Strategy::RoundRobin => RoundRobin {
             config,
