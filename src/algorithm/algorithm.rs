@@ -1,6 +1,9 @@
 use {
     crate::{
-        algorithm::round_robin::RoundRobin,
+		algorithm::{
+			round_robin::RoundRobin,
+			random::Random
+		},
         config::{Config, Server},
     },
     std::str::FromStr,
@@ -25,19 +28,12 @@ pub trait Algorithm {
 }
 
 pub fn build(config: &'static Config) -> Box<dyn Algorithm> {
-    let strategy = Strategy::from_str(config.strategy.unwrap().as_str()).unwrap();
-    Box::new(match strategy {
-        Strategy::RoundRobin => RoundRobin {
-            config,
-            current_server: 0,
-        },
-        Strategy::WeightedRoundRobin => unimplemented!(),
-        Strategy::Random => unimplemented!(),
-        Strategy::LeastConnections => unimplemented!(),
-        Strategy::WeightedLeastConnections => unimplemented!(),
-        Strategy::URLHash => unimplemented!(),
-        Strategy::SourceIPHash => unimplemented!(),
-        Strategy::LeastTraffic => unimplemented!(),
-        Strategy::LeastLatency => unimplemented!(),
-    })
+	let strategy = Strategy::from_str(config.strategy.unwrap().as_str()).unwrap();
+	match strategy {
+		Strategy::Random => Box::new(Random { config }),
+		Strategy::RoundRobin | _ => Box::new(RoundRobin {
+			config,
+			current_server: 0
+		}),
+	}
 }

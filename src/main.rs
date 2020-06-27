@@ -4,6 +4,7 @@ mod request;
 mod algorithm {
     pub mod algorithm;
     mod round_robin;
+    mod random;
 }
 
 use algorithm::algorithm::Strategy;
