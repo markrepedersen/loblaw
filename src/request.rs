@@ -72,7 +72,8 @@ impl Service<Request<Body>> for Svc {
         let server = self.get_server();
         Box::pin(async move {
             let client = Client::new();
-            let uri = format!("{}:{}{}", server.ip, server.port, server.path)
+            let old_uri = req.uri();
+            let uri = format!("{}:{}{}", server.ip(), server.port(), server.path())
                 .as_str()
                 .parse::<Uri>()
                 .unwrap();

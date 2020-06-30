@@ -67,11 +67,11 @@ async fn handle_requests(
 }
 
 async fn health_check(
-    ip: &str,
-    port: &str,
+    timeout: u64,
+    interval: u64,
     servers: &Threadable<Vec<Server>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let handler = HealthCheck::new(ip, port);
+    let handler = HealthCheck::new(timeout, interval);
     let servers = servers.clone();
     handler.run(servers).await
 }
@@ -86,7 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Err(e) = try_join!(
         handle_requests(ip, port, &globals, &servers),
-        health_check(ip, port, &servers)
+        health_check(
+            config.health_check.timeout,
+            config.health_check.interval,
+            &servers
+        )
     ) {
         panic!("Error running server: {}.", e);
     }

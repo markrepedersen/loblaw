@@ -1,20 +1,20 @@
 ip = "127.0.0.1"
-port = 8080
+port = "8080"
 strategy = "RoundRobin"
 
-[[servers]]
+[[backends]]
 ip = "3.220.112.94"
-port = 80
+port = "80"
 path = "/ip"
 
-[[servers]]
+[[backends]]
 ip = "3.220.112.94"
-port = 80
+port = "80"
 path = "/ip"
 
-[[servers]]
+[[backends]]
 ip = "3.220.112.94"
-port = 80
+port = "80"
 path = "/ip"
 
 [health_check]

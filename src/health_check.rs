@@ -13,20 +13,13 @@ use {
 };
 
 pub struct HealthCheck {
-    ip: String,
-    port: String,
     timeout: u64,
     interval: u64,
 }
 
 impl HealthCheck {
-    pub fn new(ip: &str, port: &str) -> Self {
-        Self {
-            ip: ip.to_string(),
-            port: port.to_string(),
-            timeout: 10,
-            interval: 5,
-        }
+    pub fn new(timeout: u64, interval: u64) -> Self {
+        Self { timeout, interval }
     }
 
     pub async fn run(
@@ -47,11 +40,12 @@ impl HealthCheck {
                     let (start, interval, stream) = (
                         Instant::now(),
                         Duration::from_millis(interval * 1000),
-                        TcpStream::connect(format!("{}:{}", server.ip, server.port)),
+                        TcpStream::connect(format!("{}:{}", server.ip(), server.port())),
                     );
                     println!(
-                        "[HEALTH] Sending health check to '{}:{}'.",
-                        server.ip, server.port
+                        "[HEALTH] Establishing connection: '{}:{}'.",
+                        server.ip(),
+                        server.port()
                     );
                     match timeout(limit, stream).await.unwrap() {
                         Ok(ref stream) => {
@@ -59,8 +53,9 @@ impl HealthCheck {
                                 eprintln!("Error shutting down stream: {}", e);
                             }
                             println!(
-                                "[HEALTH] Received response from '{}:{}'.",
-                                server.ip, server.port
+                                "[HEALTH] Connection established: '{}:{}'.",
+                                server.ip(),
+                                server.port()
                             );
                         }
                         Err(ref e) if e.kind() == ErrorKind::TimedOut => {}
