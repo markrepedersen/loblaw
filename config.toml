@@ -1,6 +1,6 @@
 ip = "127.0.0.1"
 port = 8080
-strategy = "roundrobin"
+strategy = "RoundRobin"
 
 [[servers]]
 ip = "http://httpbin.org/ip"

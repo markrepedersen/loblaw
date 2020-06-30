@@ -37,22 +37,21 @@ struct Svc;
 impl Svc {
     fn get_server(&self) -> config::Server {
         let config = CONFIG.clone();
-        let mut clone = STRATEGY.clone();
+        let lock = STRATEGY.clone();
+        let unlocked = lock.write();
 
-        if let Some(lock) = Arc::get_mut(&mut clone) {
-            if let Ok(strategy) = lock.get_mut() {
+        match unlocked {
+            Ok(mut strategy) => {
                 let servers = &config.servers;
-
-                if let Some(server) = servers.get(strategy.server()) {
-                    server.clone()
-                } else {
-                    panic!("Invalid server index.");
+                match servers.get(strategy.server()) {
+                    Some(server) => server.clone(),
+                    None => panic!("Invalid server index."),
                 }
-            } else {
-                panic!("Unable to get mutable reference to strategy.");
             }
-        } else {
-            panic!("Unable to acquire lock.");
+            Err(e) => {
+                eprintln!("Unable to acquire write lock due to '{}'.", e);
+                panic!();
+            }
         }
     }
 }
