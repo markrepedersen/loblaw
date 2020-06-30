@@ -10,19 +10,24 @@ mod algorithm {
     mod round_robin;
 }
 
-use algorithm::algorithm::{Algorithm, Strategy};
-use config::Config;
-use health_check::HealthCheck;
-use request::RequestHandler;
-use std::net::SocketAddr;
-use std::{str::FromStr, sync::Arc};
-use tokio::try_join;
+use {
+    algorithm::algorithm::Strategy,
+    config::Config,
+    health_check::HealthCheck,
+    request::RequestHandler,
+    std::{
+        net::SocketAddr,
+        str::FromStr,
+        sync::{Arc, RwLock},
+    },
+    tokio::try_join,
+};
 
 lazy_static! {
-    pub static ref CONFIG: Config = Config::parse().unwrap();
-    pub static ref STRATEGY: Arc<dyn Algorithm + Send + Sync> = {
-        let method = Strategy::from_str(CONFIG.strategy.as_str()).unwrap();
-        algorithm::algorithm::build(method)
+    pub static ref CONFIG: Arc<Config> = Arc::new(Config::parse().unwrap());
+    pub static ref STRATEGY: Arc<RwLock<Strategy>> = {
+        let strategy = Strategy::from_str(CONFIG.strategy.as_str()).unwrap();
+        Arc::new(RwLock::new(strategy))
     };
 }
 

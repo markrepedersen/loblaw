@@ -1,32 +1,35 @@
-use std::sync::Arc;
 use {
     crate::{
         algorithm::{random::Random, round_robin::RoundRobin},
         config::Server,
+        CONFIG,
     },
     strum_macros::EnumString,
 };
 
 #[derive(EnumString)]
 pub enum Strategy {
-    RoundRobin,
-    WeightedRoundRobin,
-    Random,
-    LeastConnections,
-    WeightedLeastConnections,
-    URLHash,
-    SourceIPHash,
-    LeastTraffic,
-    LeastLatency,
+    RoundRobin(RoundRobin),
+    WeightedRoundRobin(RoundRobin),
+    Random(Random),
+    LeastConnections(RoundRobin),
+    WeightedLeastConnections(RoundRobin),
+    URLHash(RoundRobin),
+    SourceIPHash(RoundRobin),
+    LeastTraffic(RoundRobin),
+    LeastLatency(RoundRobin),
 }
 
 pub trait Algorithm {
-    fn select(&mut self) -> Result<&Server, Box<dyn std::error::Error>>;
+    fn server(&mut self) -> usize;
 }
 
-pub fn build(strategy: Strategy) -> Arc<dyn Algorithm + Send + Sync> {
-    match strategy {
-        Strategy::Random => Arc::new(Random {}),
-        Strategy::RoundRobin | _ => Arc::new(RoundRobin { current_server: 0 }),
+impl Algorithm for Strategy {
+    fn server(&mut self) -> usize {
+        match *self {
+            Strategy::RoundRobin(ref mut strategy) => strategy.server(),
+            Strategy::Random(ref mut strategy) => strategy.server(),
+            _ => unimplemented!(),
+        }
     }
 }
