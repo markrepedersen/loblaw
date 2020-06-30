@@ -3,16 +3,16 @@ port = 8080
 strategy = "roundrobin"
 
 [[servers]]
-ip = "localhost"
-port = 1232
+ip = "http://httpbin.org/ip"
+port = 80
 
 [[servers]]
-ip = "localhost"
-port = 1233
+ip = "http://httpbin.org/ip"
+port = 80
 
 [[servers]]
-ip = "localhost"
-port = 1234
+ip = "http://httpbin.org/ip"
+port = 80
 
 [health_check]
 port = 8080

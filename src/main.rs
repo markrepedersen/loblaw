@@ -50,7 +50,7 @@ async fn health_check() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(e) = try_join!(handle_requests(), health_check()) {
+    if let Err(e) = try_join!(handle_requests()) {
         panic!("Error running server: {}.", e);
     }
 

@@ -1,6 +1,7 @@
+use hyper::Uri;
 use {
     crate::{algorithm::algorithm::Algorithm, config, CONFIG, STRATEGY},
-    hyper::{service::Service, Body, Client, Request, Response, Server},
+    hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server},
     std::{
         future::Future,
         net::SocketAddr,
@@ -8,6 +9,7 @@ use {
         sync::Arc,
         task::{Context, Poll},
     },
+    tokio::io::{self, AsyncWriteExt as _},
 };
 
 pub struct RequestHandler {
@@ -68,7 +70,25 @@ impl Service<Request<Body>> for Svc {
         let server = self.get_server();
         Box::pin(async move {
             let client = Client::new();
-            client.request(req).await
+            let uri = format!("{}:{}", server.ip, server.port)
+                .as_str()
+                .parse::<Uri>()
+                .unwrap();
+
+            *(req.uri_mut()) = uri;
+
+            match client.request(req).await {
+                Ok(mut res) => {
+                    println!("Response: {}", res.status());
+                    println!("Headers: {:#?}\n", res.headers());
+                    while let Some(next) = res.data().await {
+                        let chunk = next.unwrap();
+                        io::stdout().write_all(&chunk).await.unwrap();
+                    }
+                    Ok(res)
+                }
+                Err(e) => Err(e),
+            }
         })
     }
 }
