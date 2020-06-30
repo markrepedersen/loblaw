@@ -1,13 +1,9 @@
 use {
-    crate::{
-        algorithm::{random::Random, round_robin::RoundRobin},
-        config::Server,
-        CONFIG,
-    },
+    crate::algorithm::{random::Random, round_robin::RoundRobin},
     strum_macros::EnumString,
 };
 
-#[derive(EnumString)]
+#[derive(EnumString, Debug)]
 pub enum Strategy {
     RoundRobin(RoundRobin),
     WeightedRoundRobin(RoundRobin),

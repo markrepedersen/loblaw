@@ -1,5 +1,5 @@
 use {
-    crate::config::Server,
+    crate::{status::Server, Threadable},
     std::{
         net::Shutdown,
         time::{Duration, Instant},
@@ -14,30 +14,35 @@ use {
 
 pub struct HealthCheck {
     ip: String,
-    port: u16,
-    servers: Vec<Server>,
+    port: String,
     timeout: u64,
     interval: u64,
 }
 
 impl HealthCheck {
-    pub fn new(ip: String, port: u16, servers: Vec<Server>) -> Self {
+    pub fn new(ip: &str, port: &str) -> Self {
         Self {
-            ip,
-            port,
-            servers,
+            ip: ip.to_string(),
+            port: port.to_string(),
             timeout: 10,
             interval: 5,
         }
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut threads: Vec<_> = Vec::new();
+    pub async fn run(
+        &self,
+        servers: Threadable<Vec<Server>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let limit = Duration::from_secs(self.timeout);
         let interval = self.interval.clone();
+        let servers = {
+            let s = servers.clone();
+            let s = s.lock().unwrap();
+            s.clone()
+        };
 
-        for server in self.servers.into_iter() {
-            let handle = spawn(async move {
+        for server in servers.into_iter() {
+            spawn(async move {
                 loop {
                     let (start, interval, stream) = (
                         Instant::now(),
@@ -67,7 +72,6 @@ impl HealthCheck {
                     }
                 }
             });
-            threads.push(handle);
         }
         Ok(())
     }

@@ -1,12 +1,12 @@
+use crate::{algorithm::algorithm::Algorithm, Threadable};
 use hyper::Uri;
 use {
-    crate::{algorithm::algorithm::Algorithm, config, CONFIG, STRATEGY},
+    crate::status,
     hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server},
     std::{
         future::Future,
         net::SocketAddr,
         pin::Pin,
-        sync::Arc,
         task::{Context, Poll},
     },
     tokio::io::{self, AsyncWriteExt as _},
@@ -21,37 +21,40 @@ impl RequestHandler {
         Self { addr }
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
-        let server = Server::bind(&self.addr).serve(MakeSvc {});
+    pub async fn run(
+        &self,
+        config: Threadable<status::Global>,
+        servers: Threadable<Vec<status::Server>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let config = config.clone();
+        let servers = servers.clone();
+        let server = Server::bind(&self.addr).serve(MakeSvc { config, servers });
         println!("Listening on http://{}", self.addr);
         if let Err(e) = server.await {
-            eprintln!("server error: {}", e);
+            eprintln!("Server error: {}", e);
         }
 
         Ok(())
     }
 }
 
-struct Svc;
+struct Svc {
+    config: Threadable<status::Global>,
+    servers: Threadable<Vec<status::Server>>,
+}
 
 impl Svc {
-    fn get_server(&self) -> config::Server {
-        let config = CONFIG.clone();
-        let lock = STRATEGY.clone();
-        let unlocked = lock.write();
-
-        match unlocked {
-            Ok(mut strategy) => {
-                let servers = &config.servers;
-                match servers.get(strategy.server()) {
-                    Some(server) => server.clone(),
-                    None => panic!("Invalid server index."),
-                }
-            }
-            Err(e) => {
-                eprintln!("Unable to acquire write lock due to '{}'.", e);
-                panic!();
-            }
+    fn get_server(&self) -> status::Server {
+        let servers = {
+            let s = self.servers.clone();
+            let s = s.lock().unwrap();
+            s.clone()
+        };
+        let c = self.config.clone();
+        let mut c = c.lock().unwrap();
+        match servers.get(c.strategy_mut().server()) {
+            Some(server) => server.clone(),
+            None => panic!("Invalid server index."),
         }
     }
 }
@@ -69,7 +72,7 @@ impl Service<Request<Body>> for Svc {
         let server = self.get_server();
         Box::pin(async move {
             let client = Client::new();
-            let uri = format!("{}:{}", server.ip, server.port)
+            let uri = format!("{}:{}{}", server.ip, server.port, server.path)
                 .as_str()
                 .parse::<Uri>()
                 .unwrap();
@@ -92,7 +95,10 @@ impl Service<Request<Body>> for Svc {
     }
 }
 
-struct MakeSvc;
+struct MakeSvc {
+    config: Threadable<status::Global>,
+    servers: Threadable<Vec<status::Server>>,
+}
 
 impl<T> Service<T> for MakeSvc {
     type Response = Svc;
@@ -104,7 +110,9 @@ impl<T> Service<T> for MakeSvc {
     }
 
     fn call(&mut self, _: T) -> Self::Future {
-        let fut = async move { Ok(Svc {}) };
+        let config = self.config.clone();
+        let servers = self.servers.clone();
+        let fut = async move { Ok(Svc { config, servers }) };
         Box::pin(fut)
     }
 }

@@ -3,16 +3,19 @@ port = 8080
 strategy = "RoundRobin"
 
 [[servers]]
-ip = "http://httpbin.org/ip"
+ip = "3.220.112.94"
 port = 80
+path = "/ip"
 
 [[servers]]
-ip = "http://httpbin.org/ip"
+ip = "3.220.112.94"
 port = 80
+path = "/ip"
 
 [[servers]]
-ip = "http://httpbin.org/ip"
+ip = "3.220.112.94"
 port = 80
+path = "/ip"
 
 [health_check]
 port = 8080

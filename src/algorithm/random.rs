@@ -1,11 +1,13 @@
-use crate::{algorithm::algorithm::Algorithm, config::Server, CONFIG};
+use crate::algorithm::algorithm::Algorithm;
 use rand::Rng;
 
-#[derive(Default)]
-pub struct Random;
+#[derive(Default, Debug)]
+pub struct Random {
+    len: usize,
+}
 
 impl Algorithm for Random {
     fn server(&mut self) -> usize {
-        rand::thread_rng().gen_range(0, CONFIG.servers.len())
+        rand::thread_rng().gen_range(0, self.len)
     }
 }
