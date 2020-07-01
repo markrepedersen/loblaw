@@ -1,6 +1,6 @@
 * Abstract
 A fast and robust Layer 7 distributed load balancer.
-* Usage
+* Installation
 #+begin_src bash
 git clone https://github.com/markrepedersen/loblaw
 cd loblaw
@@ -43,7 +43,16 @@ interval = 5
 healthy_threshold = 10
 unhealthy_threshold = 10
 #+end_src
-* Features
-- Load balancer replication
-- Multiple strategies
-- Runtime configuration changes
+* Description
+Loblaw will proxy requests from clients and distribute them to available servers based on a configured strategy. \\
+#+CAPTION: Diagram
+#+NAME: load_balancer_diagram
+[[./images/diagram.svg]]
+* Strategies
+The strategy define the rules for which a given request is sent to a certain server. The following are possible strategies to choose from:
+** Round Robin (Default)
+** Weighted Round Robin
+
+
+
+
