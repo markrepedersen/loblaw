@@ -6,6 +6,7 @@ mod algorithm {
     pub mod algorithm;
     mod random;
     mod round_robin;
+    mod source_ip_hash;
 }
 
 use {

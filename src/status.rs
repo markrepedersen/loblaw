@@ -11,9 +11,9 @@ pub enum ServerStatus {
 
 #[derive(Debug)]
 pub struct Global {
-    strategy: Strategy,
-    ip: String,
-    port: String,
+    pub strategy: Strategy,
+    pub ip: String,
+    pub port: String,
 }
 
 impl Global {
@@ -56,11 +56,11 @@ impl Global {
 
 #[derive(Debug, Clone)]
 pub struct Server {
-    status: ServerStatus,
-    ip: String,
-    port: String,
-    path: String,
-    num_connections: u64,
+    pub status: ServerStatus,
+    pub ip: String,
+    pub port: String,
+    pub path: String,
+    pub num_connections: u64,
 }
 
 impl Server {

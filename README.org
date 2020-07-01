@@ -1,0 +1,49 @@
+* Abstract
+A fast and robust Layer 7 distributed load balancer.
+* Usage
+#+begin_src bash
+git clone https://github.com/markrepedersen/loblaw
+cd loblaw
+cargo run
+#+end_src
+* Configuration
+Specify a [[https://github.com/toml-lang/toml][.toml]] configuration file (default: 'config.toml') with your configuration details. \\
+The following options are allowed:
+#+begin_src toml
+# Required
+ip = "127.0.0.1"
+
+# Required
+port = "8080"
+
+# Required
+strategy = "RoundRobin" 
+
+# Required
+[[backends]] 
+ip = "3.220.112.94"
+port = "80"
+path = "/ip"
+
+[[backends]]
+ip = "3.220.112.94"
+port = "80"
+path = "/ip"
+
+[[backends]]
+ip = "3.220.112.94"
+port = "80"
+path = "/ip"
+
+# Required
+[health_check]
+port = 8080
+timeout = 10
+interval = 5
+healthy_threshold = 10
+unhealthy_threshold = 10
+#+end_src
+* Features
+- Load balancer replication
+- Multiple strategies
+- Runtime configuration changes
