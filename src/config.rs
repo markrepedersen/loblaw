@@ -1,13 +1,19 @@
 use serde::Deserialize;
-use std::fs::read_to_string;
+use std::{collections::HashMap, fs::read_to_string};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub ip: String,
     pub port: String,
     pub strategy: String,
-    pub backends: Vec<BackendConfig>,
+    pub backends: HashMap<String, BackendConfig>,
+    pub mappings: HashMap<String, StrategyMapping>,
     pub health_check: HealthCheckConfig,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct StrategyMapping {
+    pub path: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

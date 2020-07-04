@@ -2,17 +2,18 @@ ip = "127.0.0.1"
 port = "8080"
 strategy = "RoundRobin"
 
-[[backends]]
+[backends]
+[backends.main1]
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
 
-[[backends]]
+[backends.main2]
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
 
-[[backends]]
+[backends.main3]
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
@@ -23,3 +24,13 @@ timeout = 10
 interval = 5
 healthy_threshold = 10
 unhealthy_threshold = 10
+
+[strategies]
+[strategies.main1]
+path = "/ip/views"
+
+[strategies.main2]
+path = "/ip/views"
+
+[strategies.main3]
+path = "/ip/views"
