@@ -1,8 +1,6 @@
-use crate::{algorithm::algorithm::Algorithm, Threadable};
-use hyper::Uri;
 use {
-    crate::status,
-    hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server},
+    crate::{algorithm::algorithm::Algorithm, status, Threadable},
+    hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server, Uri},
     std::{
         future::Future,
         net::SocketAddr,
@@ -38,7 +36,7 @@ impl RequestHandler {
     }
 }
 
-struct Svc {
+pub struct Svc {
     config: Threadable<status::Global>,
     servers: Threadable<Vec<status::Server>>,
 }
@@ -95,7 +93,7 @@ impl Service<Request<Body>> for Svc {
     }
 }
 
-struct MakeSvc {
+pub struct MakeSvc {
     config: Threadable<status::Global>,
     servers: Threadable<Vec<status::Server>>,
 }

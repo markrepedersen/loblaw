@@ -1,12 +1,12 @@
-mod config;
-mod health_check;
-mod request;
-mod status;
-mod algorithm {
+pub mod config;
+pub mod health_check;
+pub mod request;
+pub mod status;
+pub mod algorithm {
     pub mod algorithm;
-    mod random;
-    mod round_robin;
-    mod source_ip_hash;
+    pub mod random;
+    pub mod round_robin;
+    pub mod trie;
 }
 
 use {
