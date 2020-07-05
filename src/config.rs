@@ -67,6 +67,7 @@ pub struct BackendConfig {
     pub ip: String,
     pub port: String,
     pub path: String,
+    pub scheme: String,
     pub status: ServerStatus,
     pub num_connections: u64,
 }
@@ -110,6 +111,18 @@ impl BackendConfig {
 
     #[inline]
     #[allow(dead_code)]
+    pub fn scheme(&self) -> &String {
+        &self.scheme
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn scheme_mut(&mut self) -> &mut String {
+        &mut self.scheme
+    }
+
+    #[inline]
+    #[allow(dead_code)]
     pub fn path(&self) -> &String {
         &self.path
     }
@@ -139,6 +152,7 @@ impl Default for BackendConfig {
             ip: String::from("127.0.0.1"),
             port: String::from("8080"),
             path: String::from("/backend"),
+            scheme: String::from("http"),
             status: ServerStatus::default(),
             num_connections: 0,
         }

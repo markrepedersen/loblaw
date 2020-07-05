@@ -68,10 +68,17 @@ impl Service<Request<Body>> for Svc {
         let server = self.get_server(&req);
         Box::pin(async move {
             let client = Client::new();
-            let server_uri = format!("{}:{}{}", server.ip(), server.port(), server.path())
-                .as_str()
-                .parse::<Uri>()
-                .unwrap();
+            let server_uri = {
+                let uri = Uri::builder()
+                    .scheme(server.scheme().as_str())
+                    .authority(format!("{}:{}", server.ip(), server.port()).as_str())
+                    .path_and_query(server.path().as_str())
+                    .build();
+                match uri {
+                    Ok(uri) => uri,
+                    Err(e) => panic!("Invalid URI: {}", e),
+                }
+            };
 
             *(req.uri_mut()) = server_uri;
 
@@ -85,7 +92,10 @@ impl Service<Request<Body>> for Svc {
                     }
                     Ok(res)
                 }
-                Err(e) => Err(e),
+                Err(e) => {
+                    println!("{}", e);
+                    Err(e)
+                }
             }
         })
     }

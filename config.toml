@@ -7,16 +7,19 @@ strategy = "RoundRobin"
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
+scheme = "http"
 
 [backends.main2]
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
+scheme = "http"
 
 [backends.main3]
 ip = "3.220.112.94"
 port = "80"
 path = "/ip"
+scheme = "http"
 
 [health_check]
 port = 8080

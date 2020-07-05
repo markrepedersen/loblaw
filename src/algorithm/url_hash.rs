@@ -17,10 +17,11 @@ impl Algorithm for UrlHash {
                     path,
                     BackendConfig {
                         status: ServerStatus::Alive,
-                        ip: backend.ip.clone(),
-                        port: backend.port.clone(),
-                        path: backend.path.clone(),
-                        num_connections: 0,
+                        ip: backend.ip().clone(),
+                        port: backend.port().clone(),
+                        scheme: backend.scheme().clone(),
+                        path: backend.path().clone(),
+                        num_connections: backend.num_connections().clone(),
                     },
                 );
             }

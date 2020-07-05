@@ -16,10 +16,11 @@ impl Algorithm for RoundRobin {
         for (_, backend) in config.backends.iter() {
             self.servers.push(BackendConfig {
                 status: ServerStatus::Alive,
-                ip: backend.ip.clone(),
-                port: backend.port.clone(),
-                path: backend.path.clone(),
-                num_connections: 0,
+                ip: backend.ip().clone(),
+                port: backend.port().clone(),
+                scheme: backend.scheme().clone(),
+                path: backend.path().clone(),
+                num_connections: backend.num_connections().clone(),
             })
         }
     }
