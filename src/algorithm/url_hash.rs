@@ -1,11 +1,11 @@
-use crate::{algorithm::algorithm::Algorithm, config::Config, status::*};
+use crate::{algorithm::algorithm::Algorithm, config::*};
 use hyper::{Body, Request};
 use std::collections::HashMap;
 
 /// Maps the given request to a server using the URL's path as a directive.
 #[derive(Default, Debug)]
 pub struct UrlHash {
-    url_mappings: HashMap<String, Server>,
+    url_mappings: HashMap<String, BackendConfig>,
 }
 
 impl Algorithm for UrlHash {
@@ -15,7 +15,7 @@ impl Algorithm for UrlHash {
             if let Some(backend) = config.backends.get(name) {
                 self.url_mappings.insert(
                     path,
-                    Server {
+                    BackendConfig {
                         status: ServerStatus::Alive,
                         ip: backend.ip.clone(),
                         port: backend.port.clone(),
@@ -27,7 +27,7 @@ impl Algorithm for UrlHash {
         }
     }
 
-    fn server(&mut self, req: &Request<Body>) -> &Server {
+    fn server(&mut self, req: &Request<Body>) -> &BackendConfig {
         let req_path = req.uri().path();
         self.url_mappings.get(req_path).unwrap()
     }

@@ -1,16 +1,20 @@
-use crate::{algorithm::algorithm::Algorithm, config::Config, status::*};
-use hyper::{Body, Request};
-use rand::Rng;
+use crate::config::{BackendConfig, ServerStatus};
+use {
+    crate::{algorithm::algorithm::Algorithm, config::Config},
+    hyper::{Body, Request},
+    rand::Rng,
+    serde::Deserialize,
+};
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Deserialize, Clone)]
 pub struct Random {
-    pub servers: Vec<Server>,
+    pub servers: Vec<BackendConfig>,
 }
 
 impl Algorithm for Random {
     fn configure(&mut self, config: &Config) {
         for (_, backend) in config.backends.iter() {
-            self.servers.push(Server {
+            self.servers.push(BackendConfig {
                 status: ServerStatus::Alive,
                 ip: backend.ip.clone(),
                 port: backend.port.clone(),
@@ -20,7 +24,7 @@ impl Algorithm for Random {
         }
     }
 
-    fn server(&mut self, _: &Request<Body>) -> &Server {
+    fn server(&mut self, _: &Request<Body>) -> &BackendConfig {
         let i = rand::thread_rng().gen_range(0, self.servers.len());
         self.servers.get(i).unwrap()
     }

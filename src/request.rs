@@ -1,5 +1,9 @@
 use {
-    crate::{algorithm::algorithm::Algorithm, status, Threadable},
+    crate::{
+        algorithm::algorithm::Algorithm,
+        Threadable,
+        {algorithm::algorithm::Strategy, config::BackendConfig},
+    },
     hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server, Uri},
     std::{
         future::Future,
@@ -21,10 +25,10 @@ impl RequestHandler {
 
     pub async fn run(
         &self,
-        config: Threadable<status::Global>,
+        strategy: &Threadable<Strategy>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let config = config.clone();
-        let server = Server::bind(&self.addr).serve(MakeSvc { config });
+        let strategy = strategy.clone();
+        let server = Server::bind(&self.addr).serve(MakeSvc { strategy });
         println!("Listening on http://{}", self.addr);
         if let Err(e) = server.await {
             eprintln!("Server error: {}", e);
@@ -35,14 +39,19 @@ impl RequestHandler {
 }
 
 pub struct Svc {
-    config: Threadable<status::Global>,
+    strategy: Threadable<Strategy>,
 }
 
 impl Svc {
-    fn get_server(&self, req: &Request<Body>) -> status::Server {
-        let c = self.config.clone();
-        let mut c = c.lock().unwrap();
-        c.strategy_mut().server(req).clone()
+    fn get_server(&self, req: &Request<Body>) -> BackendConfig {
+        let strategy = self.strategy.clone();
+        let mut strategy = strategy.lock();
+        match strategy {
+            Ok(ref mut strategy) => strategy.server(req).clone(),
+            Err(e) => {
+                panic!("Unable to acquire strategy lock: {}", e);
+            }
+        }
     }
 }
 
@@ -83,7 +92,7 @@ impl Service<Request<Body>> for Svc {
 }
 
 pub struct MakeSvc {
-    config: Threadable<status::Global>,
+    strategy: Threadable<Strategy>,
 }
 
 impl<T> Service<T> for MakeSvc {
@@ -96,8 +105,8 @@ impl<T> Service<T> for MakeSvc {
     }
 
     fn call(&mut self, _: T) -> Self::Future {
-        let config = self.config.clone();
-        let fut = async move { Ok(Svc { config }) };
+        let strategy = self.strategy.clone();
+        let fut = async move { Ok(Svc { strategy }) };
         Box::pin(fut)
     }
 }
