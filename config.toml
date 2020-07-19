@@ -1,24 +1,25 @@
 ip = "127.0.0.1"
 port = "8080"
 strategy = "RoundRobin"
+persistence = "default"
 
 [backends]
 [backends.main1]
 ip = "3.220.112.94"
 port = "80"
-path = "/ip"
+path = "/cookies"
 scheme = "http"
 
 [backends.main2]
 ip = "3.220.112.94"
 port = "80"
-path = "/ip"
+path = "/cookies"
 scheme = "http"
 
 [backends.main3]
 ip = "3.220.112.94"
 port = "80"
-path = "/ip"
+path = "/cookies"
 scheme = "http"
 
 [health_check]

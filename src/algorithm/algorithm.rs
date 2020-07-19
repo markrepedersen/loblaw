@@ -1,10 +1,13 @@
 use {
     crate::{
-        algorithm::{random::Random, round_robin::RoundRobin},
+        algorithm::{
+            ip_hash::IPHash, random::Random, round_robin::RoundRobin, url_hash::UriPathHash,
+        },
         config::{BackendConfig, Config},
     },
     hyper::{Body, Request},
     serde::Deserialize,
+    std::fmt,
     strum_macros::EnumString,
 };
 
@@ -17,10 +20,22 @@ pub enum Strategy {
     Random(Random),
     LeastConnections(RoundRobin),
     WeightedLeastConnections(RoundRobin),
-    URLHash(RoundRobin),
-    SourceIPHash(RoundRobin),
+    UriPathHash(UriPathHash),
+    SourceIPHash(IPHash),
     LeastTraffic(RoundRobin),
     LeastLatency(RoundRobin),
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerSelectionError;
+
+impl fmt::Display for ServerSelectionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "There was an internal error in choosing an appropriate server for this request."
+        )
+    }
 }
 
 pub trait Algorithm {
@@ -46,6 +61,8 @@ impl Algorithm for Strategy {
         match *self {
             Strategy::RoundRobin(ref mut strategy) => strategy.server(req),
             Strategy::Random(ref mut strategy) => strategy.server(req),
+            Strategy::SourceIPHash(ref mut strategy) => strategy.server(req),
+            Strategy::UriPathHash(ref mut strategy) => strategy.server(req),
             _ => unimplemented!(),
         }
     }

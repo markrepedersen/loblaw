@@ -1,11 +1,15 @@
+use crate::{algorithm::algorithm::ServerSelectionError, with_lock};
 use {
     crate::{
         algorithm::algorithm::Algorithm,
+        config::PersistenceType,
         Threadable,
         {algorithm::algorithm::Strategy, config::BackendConfig},
     },
     hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server, Uri},
     std::{
+        collections::HashMap,
+        fmt,
         future::Future,
         net::SocketAddr,
         pin::Pin,
@@ -26,9 +30,10 @@ impl RequestHandler {
     pub async fn run(
         &self,
         strategy: &Threadable<Strategy>,
+        persistence_type: PersistenceType,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let strategy = strategy.clone();
-        let server = Server::bind(&self.addr).serve(MakeSvc { strategy });
+        let server = Server::bind(&self.addr).serve(MakeSvc::new(strategy, persistence_type));
         println!("Listening on http://{}", self.addr);
         if let Err(e) = server.await {
             eprintln!("Server error: {}", e);
@@ -38,19 +43,79 @@ impl RequestHandler {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CookieError;
+
+impl fmt::Display for CookieError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Request didn't contain any cookies.")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ServerMappingError {
+    Cookie(CookieError),
+    ServerSelection(ServerSelectionError),
+}
+
+impl fmt::Display for ServerMappingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ServerMappingError::Cookie(ref e) => e.fmt(f),
+            ServerMappingError::ServerSelection(ref e) => e.fmt(f),
+        }
+    }
+}
+
+impl From<CookieError> for ServerMappingError {
+    fn from(e: CookieError) -> Self {
+        ServerMappingError::Cookie(e)
+    }
+}
+
+impl From<ServerSelectionError> for ServerMappingError {
+    fn from(e: ServerSelectionError) -> Self {
+        ServerMappingError::ServerSelection(e)
+    }
+}
+
 pub struct Svc {
     strategy: Threadable<Strategy>,
+    persistence_type: PersistenceType,
+    persistence_mappings: HashMap<String, BackendConfig>,
 }
 
 impl Svc {
-    fn get_server(&self, req: &Request<Body>) -> BackendConfig {
-        let strategy = self.strategy.clone();
-        let mut strategy = strategy.lock();
-        match strategy {
-            Ok(ref mut strategy) => strategy.server(req).clone(),
-            Err(e) => {
-                panic!("Unable to acquire strategy lock: {}", e);
+    fn new(strategy: Threadable<Strategy>, persistence_type: PersistenceType) -> Self {
+        Self {
+            strategy,
+            persistence_type,
+            persistence_mappings: HashMap::new(),
+        }
+    }
+
+    fn parse_cookies(&mut self, req: &Request<Body>, strategy: &mut Strategy) -> BackendConfig {
+        match req.headers().get("cookie") {
+            Some(cookies) => {
+                let cookies = cookies.to_str().unwrap();
+                if let Some(server) = self.persistence_mappings.get(cookies) {
+                    server.clone()
+                } else {
+                    let server = strategy.server(req);
+                    let cookie = cookies.to_string();
+
+                    self.persistence_mappings.insert(cookie, server.clone());
+                    server.clone()
+                }
             }
+            None => strategy.server(req).clone(),
+        }
+    }
+
+    fn get_server(&mut self, req: &Request<Body>, strategy: &mut Strategy) -> BackendConfig {
+        match self.persistence_type {
+            PersistenceType::Cookie => self.parse_cookies(req, strategy),
+            _ => unimplemented!("TODO: other persistence types."),
         }
     }
 }
@@ -65,7 +130,11 @@ impl Service<Request<Body>> for Svc {
     }
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
-        let server = self.get_server(&req);
+        let strategy = self.strategy.clone();
+        let server = with_lock(strategy, |mut strategy| {
+            self.get_server(&req, &mut strategy)
+        });
+
         Box::pin(async move {
             let client = Client::new();
             let server_uri = {
@@ -80,12 +149,19 @@ impl Service<Request<Body>> for Svc {
                 }
             };
 
+            println!("Request headers: {:#?}\n", req.headers());
+            println!(
+                "Forwarding request from '{}' to '{}'.",
+                req.uri(),
+                server_uri
+            );
+
             *(req.uri_mut()) = server_uri;
 
             match client.request(req).await {
                 Ok(mut res) => {
                     println!("Response: {}", res.status());
-                    println!("Headers: {:#?}\n", res.headers());
+                    println!("Response headers: {:#?}\n", res.headers());
                     while let Some(next) = res.data().await {
                         let chunk = next.unwrap();
                         io::stdout().write_all(&chunk).await.unwrap();
@@ -103,6 +179,16 @@ impl Service<Request<Body>> for Svc {
 
 pub struct MakeSvc {
     strategy: Threadable<Strategy>,
+    persistence_type: PersistenceType,
+}
+
+impl MakeSvc {
+    pub fn new(strategy: Threadable<Strategy>, persistence_type: PersistenceType) -> Self {
+        Self {
+            strategy,
+            persistence_type,
+        }
+    }
 }
 
 impl<T> Service<T> for MakeSvc {
@@ -116,7 +202,8 @@ impl<T> Service<T> for MakeSvc {
 
     fn call(&mut self, _: T) -> Self::Future {
         let strategy = self.strategy.clone();
-        let fut = async move { Ok(Svc { strategy }) };
+        let persistence_type = self.persistence_type;
+        let fut = async move { Ok(Svc::new(strategy, persistence_type)) };
         Box::pin(fut)
     }
 }

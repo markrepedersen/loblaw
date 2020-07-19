@@ -32,19 +32,11 @@ pub async fn run(config: &Threadable<Config>) -> Result<(), Box<dyn std::error::
                     Duration::from_millis(interval * 1000),
                     TcpStream::connect(format!("{}:{}", server.ip, server.port)),
                 );
-                println!(
-                    "[HEALTH] Establishing connection: '{}:{}'.",
-                    server.ip, server.port
-                );
                 match timeout(limit, stream).await.unwrap() {
                     Ok(ref stream) => {
                         if let Err(e) = stream.shutdown(Shutdown::Both) {
                             eprintln!("Error shutting down stream: {}", e);
                         }
-                        println!(
-                            "[HEALTH] Connection established: '{}:{}'.",
-                            server.ip, server.port
-                        );
                     }
                     Err(ref e) if e.kind() == ErrorKind::TimedOut => {}
                     Err(ref e) => eprintln!("Error sending health check: {}.", e),

@@ -1,6 +1,7 @@
 use {
-    serde::Deserialize,
-    std::{collections::HashMap, fs::read_to_string},
+    serde::{Deserialize, Deserializer},
+    std::{collections::HashMap, fs::read_to_string, str::FromStr},
+    strum_macros::{Display, EnumString},
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -9,7 +10,8 @@ pub struct Config {
     pub ip: String,
     pub port: String,
     pub strategy: String,
-    pub persist_session: bool,
+    #[serde(deserialize_with = "PersistenceType::deserialize_persistence_type")]
+    pub persistence_type: PersistenceType,
     pub replicas: usize,
     pub backends: HashMap<String, BackendConfig>,
     pub mappings: HashMap<String, StrategyMapping>,
@@ -32,12 +34,44 @@ impl Default for Config {
             ip: String::from("127.0.0.1"),
             port: String::from("8080"),
             strategy: String::from("RoundRobin"),
-            persist_session: false,
+            persistence_type: PersistenceType::default(),
             replicas: 0,
             backends: HashMap::new(),
             mappings: HashMap::new(),
             health_check: HealthCheckConfig::default(),
         }
+    }
+}
+
+/// Represents a persistent connection between the client and a specific server.
+/// ****************************************************************************
+/// Applications developed without load-balancing in mind may break when deployed in a load-balanced
+/// architecture because they depend on session data that is stored only on the original server on which the session was initiated.
+/// ****************************************************************************
+/// By default, if no persistence type is specified, requests will be routed based on cookies.
+#[derive(EnumString, Deserialize, Debug, Copy, Clone, Display)]
+pub enum PersistenceType {
+    /// Requests with the same cookie will be routed to the same server.
+    Cookie,
+    /// Requests with the same IP address will be routed to the same server.
+    IP,
+    /// Requests may be routed to any server based on the given strategy.
+    None,
+}
+
+impl Default for PersistenceType {
+    fn default() -> Self {
+        PersistenceType::Cookie
+    }
+}
+
+impl PersistenceType {
+    pub fn deserialize_persistence_type<'de, D>(field: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: &str = Deserialize::deserialize(field)?;
+        Ok(Self::from_str(s).unwrap())
     }
 }
 
@@ -184,6 +218,11 @@ impl Config {
             let contents = read_to_string("config.toml")?;
             toml::from_str(contents.as_str())?
         };
+
+        println!("The following settings were provided:");
+        println!("- strategy: {}.", config.strategy);
+        println!("- sticky_session: {}.", config.persistence_type);
+        println!("- # replicas: {}.", config.replicas);
         Ok(config)
     }
 }
