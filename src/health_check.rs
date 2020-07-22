@@ -1,5 +1,5 @@
 use {
-    crate::{config::Config, Threadable},
+    crate::{config::Config, Threadable, with_read_lock},
     std::{
         net::Shutdown,
         time::{Duration, Instant},
@@ -12,17 +12,14 @@ use {
     },
 };
 
-pub async fn run(config: &Threadable<Config>) -> Result<(), Box<dyn std::error::Error>> {
-    let (limit, interval, servers) = {
-        let config = config.clone();
-        let config = config.lock().unwrap();
-
+pub async fn run(config: Threadable<Config>) -> Result<(), Box<dyn std::error::Error>> {
+    let (limit, interval, servers) = with_read_lock(config, |config| {
         (
             Duration::from_secs(config.health_check.timeout),
             config.health_check.interval,
             config.backends.clone(),
-        )
-    };
+        )	
+    });
 
     for (_, server) in servers.into_iter() {
         spawn(async move {

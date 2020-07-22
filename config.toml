@@ -7,19 +7,19 @@ persistence = "default"
 [backends.main1]
 ip = "3.220.112.94"
 port = "80"
-path = "/cookies"
+path = "/ip"
 scheme = "http"
 
 [backends.main2]
 ip = "3.220.112.94"
 port = "80"
-path = "/cookies"
+path = "/deny"
 scheme = "http"
 
 [backends.main3]
 ip = "3.220.112.94"
 port = "80"
-path = "/cookies"
+path = "/image"
 scheme = "http"
 
 [health_check]

@@ -1,5 +1,7 @@
 pub mod config;
+pub mod cookie;
 pub mod dynamic;
+pub mod error;
 pub mod health_check;
 pub mod request;
 pub mod algorithm {
@@ -18,26 +20,28 @@ use {
     std::str::FromStr,
     std::{
         net::SocketAddr,
-        sync::{Arc, Mutex},
+        sync::{Arc, RwLock},
     },
     tokio::try_join,
 };
 
-pub type Threadable<T> = Arc<Mutex<T>>;
+pub type Threadable<T> = Arc<RwLock<T>>;
 
-fn with_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&mut T) -> R) -> R {
-    let strategy = &mut data.lock().expect("Could not lock mutex.");
+fn with_read_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&T) -> R) -> R {
+    let strategy = &data.read().expect("Could not lock mutex.");
     f(strategy)
 }
 
-/// Start up a config server for dynamic configuration changes using REST API calls.
-fn init_config_server() {}
+fn with_write_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&mut T) -> R) -> R {
+    let strategy = &mut data.write().expect("Could not lock mutex.");
+    f(strategy)
+}
 
 async fn handle_requests(
-    config: &Threadable<Config>,
-    strategy: &Threadable<Strategy>,
+    config: Threadable<Config>,
+    strategy: Threadable<Strategy>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (ip, port, persistence_type) = with_lock(config.clone(), |config| {
+    let (ip, port, persistence_type) = with_read_lock(config.clone(), |config| {
         (
             config.ip.clone(),
             config.port.clone(),
@@ -47,8 +51,8 @@ async fn handle_requests(
 
     match format!("{}:{}", ip, port).parse::<SocketAddr>() {
         Ok(addr) => {
-            let handler = RequestHandler::new(addr);
-            handler.run(strategy, persistence_type).await
+            let handler = RequestHandler::new(addr, persistence_type, strategy);
+            handler.run().await
         }
         Err(e) => panic!("Invalid address due to '{}'.", e),
     }
@@ -58,15 +62,18 @@ fn init() -> Result<(Threadable<Config>, Threadable<Strategy>), Box<dyn std::err
     let config = Config::parse()?;
     let mut strategy = Strategy::from_str(config.strategy.as_str()).unwrap();
     strategy.configure(&config);
-    Ok((Arc::new(Mutex::new(config)), Arc::new(Mutex::new(strategy))))
+    Ok((
+        Arc::new(RwLock::new(config)),
+        Arc::new(RwLock::new(strategy)),
+    ))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (config, strategy) = init()?;
     if let Err(e) = try_join!(
-        handle_requests(&config, &strategy),
-        health_check::run(&config)
+        handle_requests(config.clone(), strategy.clone()),
+        health_check::run(config.clone())
     ) {
         panic!("Error running server: {}.", e);
     }

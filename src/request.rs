@@ -1,40 +1,105 @@
-use crate::{algorithm::algorithm::ServerSelectionError, with_lock};
 use {
     crate::{
-        algorithm::algorithm::Algorithm,
         config::PersistenceType,
-        Threadable,
+        cookie::Cookie,
+        with_write_lock, Threadable,
         {algorithm::algorithm::Strategy, config::BackendConfig},
     },
-    hyper::{body::HttpBody, service::Service, Body, Client, Request, Response, Server, Uri},
+    hyper::{
+        header,
+        server::conn::AddrStream,
+        service::{make_service_fn, service_fn},
+        Body, Client, Request, Response, Server, Uri,
+    },
     std::{
         collections::HashMap,
-        fmt,
-        future::Future,
+        convert::Infallible,
         net::SocketAddr,
-        pin::Pin,
-        task::{Context, Poll},
+        sync::{Arc, RwLock},
     },
-    tokio::io::{self, AsyncWriteExt as _},
 };
+
+static COOKIE_SESSION_KEY: &'static str = "session";
 
 pub struct RequestHandler {
     addr: SocketAddr,
+    strategy: Threadable<Strategy>,
+    persistence_type: PersistenceType,
+    persistence_mappings: Arc<RwLock<HashMap<String, BackendConfig>>>,
 }
 
 impl RequestHandler {
-    pub fn new(addr: SocketAddr) -> Self {
-        Self { addr }
+    pub fn new(
+        addr: SocketAddr,
+        persistence_type: PersistenceType,
+        strategy: Threadable<Strategy>,
+    ) -> Self {
+        Self {
+            addr,
+            persistence_type,
+            strategy,
+            persistence_mappings: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
-    pub async fn run(
-        &self,
-        strategy: &Threadable<Strategy>,
-        persistence_type: PersistenceType,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let strategy = strategy.clone();
-        let server = Server::bind(&self.addr).serve(MakeSvc::new(strategy, persistence_type));
+    fn choose_server(
+        req: &Request<Body>,
+        strategy: &mut Strategy,
+        typ: PersistenceType,
+        mappings: Arc<RwLock<HashMap<String, BackendConfig>>>,
+    ) -> BackendConfig {
+        match typ {
+            PersistenceType::Cookie => with_write_lock(mappings, |ref mut mappings| {
+                Cookie::parse_cookies(req, strategy, mappings)
+            }),
+            _ => unimplemented!("TODO: other persistence types."),
+        }
+    }
+
+    async fn forward_request(
+        req: Request<Body>,
+        client: SocketAddr,
+    ) -> Result<Response<Body>, hyper::Error> {
+        let client_host = format!("{}", client.ip());
+        let server_host = req
+            .headers()
+            .get("host")
+            .expect("Request should have HOST header.")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut res = Client::new().request(req).await;
+
+        if let Ok(ref mut response) = res {
+            if !Cookie::has_cookie(response, COOKIE_SESSION_KEY) {
+                Cookie::set_cookie(response, client_host, server_host, COOKIE_SESSION_KEY);
+            }
+        }
+
+        res
+    }
+
+    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let server = Server::bind(&self.addr).serve(make_service_fn(move |conn: &AddrStream| {
+            let addr = conn.remote_addr();
+            let typ = self.persistence_type;
+            let strategy = self.strategy.clone();
+            let mappings = self.persistence_mappings.clone();
+            async move {
+                let client = addr.clone();
+                Ok::<_, Infallible>(service_fn(move |mut req| {
+                    let server = with_write_lock(strategy.clone(), |mut strategy| {
+                        Self::choose_server(&req, &mut strategy, typ, mappings.clone())
+                    });
+                    req.set_uri(&server);
+                    Self::forward_request(req, client)
+                }))
+            }
+        }));
+
         println!("Listening on http://{}", self.addr);
+
         if let Err(e) = server.await {
             eprintln!("Server error: {}", e);
         }
@@ -43,167 +108,25 @@ impl RequestHandler {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CookieError;
-
-impl fmt::Display for CookieError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Request didn't contain any cookies.")
-    }
+trait Proxy {
+    fn set_uri(&mut self, server: &BackendConfig);
+    fn set_headers(&mut self, map: HashMap<String, String>);
 }
 
-#[derive(Debug, Clone)]
-pub enum ServerMappingError {
-    Cookie(CookieError),
-    ServerSelection(ServerSelectionError),
-}
-
-impl fmt::Display for ServerMappingError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ServerMappingError::Cookie(ref e) => e.fmt(f),
-            ServerMappingError::ServerSelection(ref e) => e.fmt(f),
-        }
-    }
-}
-
-impl From<CookieError> for ServerMappingError {
-    fn from(e: CookieError) -> Self {
-        ServerMappingError::Cookie(e)
-    }
-}
-
-impl From<ServerSelectionError> for ServerMappingError {
-    fn from(e: ServerSelectionError) -> Self {
-        ServerMappingError::ServerSelection(e)
-    }
-}
-
-pub struct Svc {
-    strategy: Threadable<Strategy>,
-    persistence_type: PersistenceType,
-    persistence_mappings: HashMap<String, BackendConfig>,
-}
-
-impl Svc {
-    fn new(strategy: Threadable<Strategy>, persistence_type: PersistenceType) -> Self {
-        Self {
-            strategy,
-            persistence_type,
-            persistence_mappings: HashMap::new(),
-        }
+impl Proxy for Request<Body> {
+    fn set_uri(&mut self, server: &BackendConfig) {
+        *(self.uri_mut()) = Uri::builder()
+            .scheme(server.scheme().as_str())
+            .authority(format!("{}:{}", server.ip(), server.port()).as_str())
+            .path_and_query(server.path().as_str())
+            .build()
+            .unwrap();
     }
 
-    fn parse_cookies(&mut self, req: &Request<Body>, strategy: &mut Strategy) -> BackendConfig {
-        match req.headers().get("cookie") {
-            Some(cookies) => {
-                let cookies = cookies.to_str().unwrap();
-                if let Some(server) = self.persistence_mappings.get(cookies) {
-                    server.clone()
-                } else {
-                    let server = strategy.server(req);
-                    let cookie = cookies.to_string();
-
-                    self.persistence_mappings.insert(cookie, server.clone());
-                    server.clone()
-                }
-            }
-            None => strategy.server(req).clone(),
-        }
-    }
-
-    fn get_server(&mut self, req: &Request<Body>, strategy: &mut Strategy) -> BackendConfig {
-        match self.persistence_type {
-            PersistenceType::Cookie => self.parse_cookies(req, strategy),
-            _ => unimplemented!("TODO: other persistence types."),
-        }
-    }
-}
-
-impl Service<Request<Body>> for Svc {
-    type Response = Response<Body>;
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, mut req: Request<Body>) -> Self::Future {
-        let strategy = self.strategy.clone();
-        let server = with_lock(strategy, |mut strategy| {
-            self.get_server(&req, &mut strategy)
-        });
-
-        Box::pin(async move {
-            let client = Client::new();
-            let server_uri = {
-                let uri = Uri::builder()
-                    .scheme(server.scheme().as_str())
-                    .authority(format!("{}:{}", server.ip(), server.port()).as_str())
-                    .path_and_query(server.path().as_str())
-                    .build();
-                match uri {
-                    Ok(uri) => uri,
-                    Err(e) => panic!("Invalid URI: {}", e),
-                }
-            };
-
-            println!("Request headers: {:#?}\n", req.headers());
-            println!(
-                "Forwarding request from '{}' to '{}'.",
-                req.uri(),
-                server_uri
-            );
-
-            *(req.uri_mut()) = server_uri;
-
-            match client.request(req).await {
-                Ok(mut res) => {
-                    println!("Response: {}", res.status());
-                    println!("Response headers: {:#?}\n", res.headers());
-                    while let Some(next) = res.data().await {
-                        let chunk = next.unwrap();
-                        io::stdout().write_all(&chunk).await.unwrap();
-                    }
-                    Ok(res)
-                }
-                Err(e) => {
-                    println!("{}", e);
-                    Err(e)
-                }
-            }
-        })
-    }
-}
-
-pub struct MakeSvc {
-    strategy: Threadable<Strategy>,
-    persistence_type: PersistenceType,
-}
-
-impl MakeSvc {
-    pub fn new(strategy: Threadable<Strategy>, persistence_type: PersistenceType) -> Self {
-        Self {
-            strategy,
-            persistence_type,
-        }
-    }
-}
-
-impl<T> Service<T> for MakeSvc {
-    type Response = Svc;
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _: &mut Context) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, _: T) -> Self::Future {
-        let strategy = self.strategy.clone();
-        let persistence_type = self.persistence_type;
-        let fut = async move { Ok(Svc::new(strategy, persistence_type)) };
-        Box::pin(fut)
+    fn set_headers(&mut self, map: HashMap<String, String>) {
+        match self.headers_mut().get(header::FORWARDED) {
+            Some(_) => {}
+            None => {}
+        };
     }
 }
