@@ -67,7 +67,7 @@ impl RequestHandler {
     ///
     /// # Note:
     /// This should be inside the Request trait, however, async trait functions are unstable as of writing this.
-    /// Using the `async-trait` crate would mean heap allocation, which is not desired due to the frequency of calling this method.
+    /// Using the `async-trait` crate would mean heap allocation per method call, which is not desired due to the frequency of calling this method.
     async fn forward_request(
         req: Request<Body>,
         session_id: String,
@@ -95,8 +95,6 @@ impl RequestHandler {
                 Ok::<_, hyper::Error>(service_fn(move |mut req| {
                     let session_id =
                         req.get_session_id(client.ip().to_string(), req.get_server_host());
-                    dbg!(&session_id);
-                    println!();
                     let server = with_write_lock(mappings.clone(), |mappings| {
                         mappings
                             .get(&session_id)
