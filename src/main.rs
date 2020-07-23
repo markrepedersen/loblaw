@@ -1,5 +1,6 @@
+#![feature(type_alias_impl_trait)]
+
 pub mod config;
-pub mod cookie;
 pub mod dynamic;
 pub mod error;
 pub mod health_check;

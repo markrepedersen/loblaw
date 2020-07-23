@@ -1,9 +1,11 @@
 use {
     crate::{
         config::PersistenceType,
-        cookie::Cookie,
         with_write_lock, Threadable,
-        {algorithm::algorithm::Strategy, config::BackendConfig},
+        {
+            algorithm::algorithm::{Algorithm, Strategy},
+            config::BackendConfig,
+        },
     },
     hyper::{
         header,
@@ -12,14 +14,33 @@ use {
         Body, Client, Request, Response, Server, Uri,
     },
     std::{
-        collections::HashMap,
-        convert::Infallible,
+        collections::hash_map::{DefaultHasher, HashMap},
+        hash::{Hash, Hasher},
         net::SocketAddr,
         sync::{Arc, RwLock},
     },
+    time::Duration,
 };
 
 static COOKIE_SESSION_KEY: &'static str = "session";
+
+#[derive(Hash)]
+pub struct User {
+    client_host: String,
+    server_host: String,
+}
+
+impl User {
+    fn generate_unique_id(client_host: String, server_host: String) -> String {
+        let user = User {
+            client_host,
+            server_host,
+        };
+        let mut s = DefaultHasher::new();
+        user.hash(&mut s);
+        s.finish().to_string()
+    }
+}
 
 pub struct RequestHandler {
     addr: SocketAddr,
@@ -42,38 +63,20 @@ impl RequestHandler {
         }
     }
 
-    fn choose_server(
-        req: &Request<Body>,
-        strategy: &mut Strategy,
-        typ: PersistenceType,
-        mappings: Arc<RwLock<HashMap<String, BackendConfig>>>,
-    ) -> BackendConfig {
-        match typ {
-            PersistenceType::Cookie => with_write_lock(mappings, |ref mut mappings| {
-                Cookie::parse_cookies(req, strategy, mappings)
-            }),
-            _ => unimplemented!("TODO: other persistence types."),
-        }
-    }
-
+    /// Forward `req` to a given server based on a previously chosen strategy.
+    ///
+    /// # Note:
+    /// This should be inside the Request trait, however, async trait functions are unstable as of writing this.
+    /// Using the `async-trait` crate would mean heap allocation, which is not desired due to the frequency of calling this method.
     async fn forward_request(
         req: Request<Body>,
-        client: SocketAddr,
+        session_id: String,
     ) -> Result<Response<Body>, hyper::Error> {
-        let client_host = format!("{}", client.ip());
-        let server_host = req
-            .headers()
-            .get("host")
-            .expect("Request should have HOST header.")
-            .to_str()
-            .unwrap()
-            .to_string();
-
         let mut res = Client::new().request(req).await;
 
         if let Ok(ref mut response) = res {
-            if !Cookie::has_cookie(response, COOKIE_SESSION_KEY) {
-                Cookie::set_cookie(response, client_host, server_host, COOKIE_SESSION_KEY);
+            if !response.has_cookie(COOKIE_SESSION_KEY) {
+                response.set_cookie(session_id, COOKIE_SESSION_KEY);
             }
         }
 
@@ -86,14 +89,32 @@ impl RequestHandler {
             let typ = self.persistence_type;
             let strategy = self.strategy.clone();
             let mappings = self.persistence_mappings.clone();
+
             async move {
                 let client = addr.clone();
-                Ok::<_, Infallible>(service_fn(move |mut req| {
-                    let server = with_write_lock(strategy.clone(), |mut strategy| {
-                        Self::choose_server(&req, &mut strategy, typ, mappings.clone())
+                Ok::<_, hyper::Error>(service_fn(move |mut req| {
+                    let session_id =
+                        req.get_session_id(client.ip().to_string(), req.get_server_host());
+                    dbg!(&session_id);
+                    println!();
+                    let server = with_write_lock(mappings.clone(), |mappings| {
+                        mappings
+                            .get(&session_id)
+                            .cloned()
+                            .or_else(|| {
+                                let server = with_write_lock(strategy.clone(), |strategy| {
+                                    strategy.server(&req).clone()
+                                });
+                                mappings.insert(session_id.clone(), server.clone());
+                                Some(server)
+                            })
+                            .expect("A server should have been chosen.")
                     });
+
                     req.set_uri(&server);
-                    Self::forward_request(req, client)
+                    req.set_headers(&client);
+
+                    Self::forward_request(req, session_id)
                 }))
             }
         }));
@@ -108,12 +129,75 @@ impl RequestHandler {
     }
 }
 
-trait Proxy {
-    fn set_uri(&mut self, server: &BackendConfig);
-    fn set_headers(&mut self, map: HashMap<String, String>);
+trait ResponseProxy {
+    fn set_cookie(&mut self, session_id: String, cookie_key: &str);
+    fn has_cookie(&mut self, cookie_key: &str) -> bool;
 }
 
-impl Proxy for Request<Body> {
+impl ResponseProxy for Response<Body> {
+    fn has_cookie(&mut self, cookie_key: &str) -> bool {
+        self.headers()
+            .get_all(header::COOKIE)
+            .iter()
+            .map(|value| cookie::Cookie::parse(value.to_str().unwrap()))
+            .any(|cookie| {
+                if let Ok(cookie) = cookie {
+                    cookie.name() == cookie_key
+                } else {
+                    false
+                }
+            })
+    }
+
+    fn set_cookie(&mut self, session_id: String, cookie_key: &str) {
+        let cookie = cookie::Cookie::build(cookie_key, session_id)
+            .max_age(Duration::seconds(30))
+            .http_only(true)
+            .finish();
+        let val = header::HeaderValue::from_str(&cookie.encoded().to_string()).unwrap();
+        self.headers_mut().insert(header::SET_COOKIE, val);
+    }
+}
+
+trait RequestProxy {
+    fn get_session_id(&self, client_host: String, server_host: String) -> String;
+    fn set_uri(&mut self, server: &BackendConfig);
+    fn set_headers(&mut self, addr: &SocketAddr);
+    fn get_server_host(&self) -> String;
+}
+
+impl RequestProxy for Request<Body> {
+    fn get_session_id(&self, client_host: String, server_host: String) -> String {
+        self.headers()
+            .get_all(header::COOKIE)
+            .iter()
+            .map(|value| cookie::Cookie::parse(value.to_str().unwrap()))
+            .find(|val| {
+                if let Ok(cookie) = val {
+                    cookie.name() == COOKIE_SESSION_KEY
+                } else {
+                    false
+                }
+            })
+            .and_then(|cookie| {
+                if let Ok(cookie) = cookie {
+                    Some(cookie.value().to_string())
+                } else {
+                    Some(User::generate_unique_id(
+                        client_host.clone(),
+                        server_host.clone(),
+                    ))
+                }
+            })
+            .or_else(|| {
+                Some(User::generate_unique_id(
+                    client_host.clone(),
+                    server_host.clone(),
+                ))
+            })
+            .expect("At least one session ID should have been chosen.")
+    }
+
     fn set_uri(&mut self, server: &BackendConfig) {
         *(self.uri_mut()) = Uri::builder()
             .scheme(server.scheme().as_str())
@@ -123,10 +207,17 @@ impl Proxy for Request<Body> {
             .unwrap();
     }
 
-    fn set_headers(&mut self, map: HashMap<String, String>) {
-        match self.headers_mut().get(header::FORWARDED) {
-            Some(_) => {}
-            None => {}
-        };
+    fn set_headers(&mut self, addr: &SocketAddr) {
+        let forwarded_val = header::HeaderValue::from_str(&addr.ip().to_string()).unwrap();
+        self.headers_mut().insert(header::FORWARDED, forwarded_val);
+    }
+
+    fn get_server_host(&self) -> String {
+        self.headers()
+            .get("host")
+            .expect("Request should have HOST header.")
+            .to_str()
+            .unwrap()
+            .to_string()
     }
 }
