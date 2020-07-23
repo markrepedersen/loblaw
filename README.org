@@ -50,10 +50,10 @@ Loblaw will proxy requests from clients and distribute them to available servers
 [[./images/diagram.svg]]
 * Strategies
 The strategy define the rules for which a given request is sent to a certain server. The following are possible strategies to choose from:
-** Round Robin (Default)
-** Weighted Round Robin
-** IP Hash
-** URL Path Hash
+- Round Robin (Default)
+- Weighted Round Robin
+- IP Hash
+- URL Path Hash
 
 * Session Stickiness
 Session stickiness creates an affinity between a client and a server. This is sometimes useful for architectures that weren't designed with load balancers in mind. It is also useful to take advantage of server caching of resources as well as optimizing network resource usage.
