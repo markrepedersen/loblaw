@@ -1,6 +1,9 @@
 use {
-    crate::{algorithm::algorithm::Algorithm, config::*},
-    hyper::{Body, Request},
+    crate::{
+        algorithm::algorithm::{Algorithm, RequestInfo},
+        config::*,
+    },
+    async_trait::async_trait,
     serde::Deserialize,
     std::collections::HashMap,
 };
@@ -11,6 +14,7 @@ pub struct IPHash {
     ip_mappings: HashMap<String, BackendConfig>,
 }
 
+#[async_trait]
 impl Algorithm for IPHash {
     fn configure(&mut self, config: &Config) {
         for (name, mapping) in config.mappings.iter() {
@@ -31,8 +35,8 @@ impl Algorithm for IPHash {
         }
     }
 
-    fn server(&mut self, req: &Request<Body>) -> &BackendConfig {
+    async fn server(&mut self, req: &RequestInfo) -> Option<BackendConfig> {
         let host = req.uri().host().unwrap();
-        self.ip_mappings.get(host).unwrap()
+        self.ip_mappings.get(host).map(ToOwned::to_owned)
     }
 }

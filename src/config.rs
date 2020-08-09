@@ -1,4 +1,5 @@
 use {
+    actix_web::http::{Error, Uri},
     serde::{Deserialize, Deserializer},
     std::{collections::HashMap, fs::read_to_string, str::FromStr},
     strum_macros::{Display, EnumString},
@@ -107,6 +108,17 @@ pub struct BackendConfig {
 }
 
 impl BackendConfig {
+    #[inline]
+    #[allow(dead_code)]
+    pub fn uri(&self) -> Result<Uri, Error> {
+        Uri::builder()
+            .scheme(self.scheme().as_str())
+            .authority(format!("{}:{}", self.ip(), self.port()).as_str())
+            .path_and_query(self.path().as_str())
+            .build()
+            .map_err(Error::from)
+    }
+
     #[inline]
     #[allow(dead_code)]
     pub fn status(&self) -> &ServerStatus {
@@ -220,6 +232,8 @@ impl Config {
         };
 
         println!("The following settings were provided:");
+        println!("- ip: {}.", config.ip);
+        println!("- port: {}.", config.port);
         println!("- strategy: {}.", config.strategy);
         println!("- sticky_session: {}.", config.persistence_type);
         println!("- # replicas: {}.", config.replicas);

@@ -1,17 +1,17 @@
 use {
     crate::{
+        algorithm::algorithm::RequestInfo,
         config::PersistenceType,
-        with_write_lock, Threadable,
+        with_read_lock, with_write_lock, Threadable,
         {
             algorithm::algorithm::{Algorithm, Strategy},
             config::BackendConfig,
         },
     },
-    hyper::{
-        header,
-        server::conn::AddrStream,
-        service::{make_service_fn, service_fn},
-        Body, Client, Request, Response, Server, Uri,
+    actix_web::{
+        client::{Client, ClientResponse},
+        http::{header, Cookie},
+        middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
     },
     std::{
         collections::hash_map::{DefaultHasher, HashMap},
@@ -19,7 +19,6 @@ use {
         net::SocketAddr,
         sync::{Arc, RwLock},
     },
-    time::Duration,
 };
 
 static COOKIE_SESSION_KEY: &'static str = "session";
@@ -63,81 +62,100 @@ impl RequestHandler {
         }
     }
 
-    /// Forward `req` to a given server based on a previously chosen strategy.
-    ///
-    /// # Note:
-    /// This should be inside the Request trait, however, async trait functions are unstable as of writing this.
-    /// Using the `async-trait` crate would mean heap allocation per method call, which is not desired due to the frequency of calling this method.
-    async fn forward_request(
-        req: Request<Body>,
-        session_id: String,
-    ) -> Result<Response<Body>, hyper::Error> {
-        let mut res = Client::new().request(req).await;
-
-        if let Ok(ref mut response) = res {
-            if !response.has_cookie(COOKIE_SESSION_KEY) {
-                response.set_cookie(session_id, COOKIE_SESSION_KEY);
+    async fn get_server(
+        strategy: Threadable<Strategy>,
+        mappings: Threadable<HashMap<String, BackendConfig>>,
+        req_info: &RequestInfo,
+        session_id: &String,
+    ) -> BackendConfig {
+        let server = with_read_lock(mappings.clone(), |mappings| {
+            mappings.get(session_id).cloned()
+        });
+        match server {
+            Some(server) => server,
+            None => {
+                let mut strategy = strategy.write().expect("Couldn't acquire the lock.");
+                let server = strategy
+                    .server(req_info)
+                    .await
+                    .expect("Unable to retrieve server.");
+                with_write_lock(mappings, |mappings| {
+                    mappings.insert(session_id.clone(), server.clone())
+                });
+                server
             }
         }
+    }
 
-        res
+    /// Forward `req` to a given server based on a previously chosen strategy.
+    async fn forward(
+        req: HttpRequest,
+        body: web::Bytes,
+        client: web::Data<Client>,
+        strategy: web::Data<Threadable<Strategy>>,
+        mappings: web::Data<Threadable<HashMap<String, BackendConfig>>>,
+    ) -> Result<HttpResponse, Error> {
+        let strategy = strategy.get_ref().clone();
+        let mappings = mappings.get_ref().clone();
+        let client_uri = if let Some(addr) = req.peer_addr() {
+            addr.to_string()
+        } else {
+            String::from("")
+        };
+        let session_id = req.get_session_id(&client_uri, &req.get_server_host());
+        let req_info = RequestInfo::new(req.uri().clone(), req.connection_info().clone());
+        let server = Self::get_server(strategy, mappings, &req_info, &session_id).await;
+        let uri = server.uri()?;
+        let mut forwarded_response = client
+            .request_from(uri, req.head())
+            .no_decompress()
+            .header(header::FORWARDED, client_uri)
+            .send_body(body)
+            .await
+            .map_err(Error::from)?;
+        let mut res = HttpResponse::build(forwarded_response.status());
+
+        if !forwarded_response.has_cookie(COOKIE_SESSION_KEY) {
+            let cookie = Cookie::build(COOKIE_SESSION_KEY, session_id)
+                .max_age(30)
+                .http_only(true)
+                .finish();
+            res.cookie(cookie);
+        }
+
+        Ok(res.body(forwarded_response.body().await?))
     }
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let server = Server::bind(&self.addr).serve(make_service_fn(move |conn: &AddrStream| {
-            let addr = conn.remote_addr();
-            let typ = self.persistence_type;
-            let strategy = self.strategy.clone();
-            let mappings = self.persistence_mappings.clone();
-
-            async move {
-                let client = addr.clone();
-                Ok::<_, hyper::Error>(service_fn(move |mut req| {
-                    let session_id =
-                        req.get_session_id(client.ip().to_string(), req.get_server_host());
-                    let server = with_write_lock(mappings.clone(), |mappings| {
-                        mappings
-                            .get(&session_id)
-                            .cloned()
-                            .or_else(|| {
-                                let server = with_write_lock(strategy.clone(), |strategy| {
-                                    strategy.server(&req).clone()
-                                });
-                                mappings.insert(session_id.clone(), server.clone());
-                                Some(server)
-                            })
-                            .expect("A server should have been chosen.")
-                    });
-
-                    req.set_uri(&server);
-                    req.set_headers(&client);
-
-                    Self::forward_request(req, session_id)
-                }))
-            }
-        }));
-
-        println!("Listening on http://{}", self.addr);
-
-        if let Err(e) = server.await {
-            eprintln!("Server error: {}", e);
-        }
+        let strat = self.strategy.clone();
+        let mappings = self.persistence_mappings.clone();
+        println!("Waiting for packets on '{}'.", &self.addr);
+        HttpServer::new(move || {
+            App::new()
+                .data(Client::new())
+                .data(strat.clone())
+                .data(mappings.clone())
+                .wrap(middleware::Logger::default())
+                .default_service(web::route().to(Self::forward))
+        })
+        .bind(self.addr)?
+        .run()
+        .await?;
 
         Ok(())
     }
 }
 
-trait ResponseProxy {
-    fn set_cookie(&mut self, session_id: String, cookie_key: &str);
+trait HasCookie {
     fn has_cookie(&mut self, cookie_key: &str) -> bool;
 }
 
-impl ResponseProxy for Response<Body> {
+impl<T> HasCookie for ClientResponse<T> {
     fn has_cookie(&mut self, cookie_key: &str) -> bool {
         self.headers()
             .get_all(header::COOKIE)
-            .iter()
-            .map(|value| cookie::Cookie::parse(value.to_str().unwrap()))
+            .into_iter()
+            .map(|value| Cookie::parse(value.to_str().unwrap()))
             .any(|cookie| {
                 if let Ok(cookie) = cookie {
                     cookie.name() == cookie_key
@@ -146,30 +164,19 @@ impl ResponseProxy for Response<Body> {
                 }
             })
     }
-
-    fn set_cookie(&mut self, session_id: String, cookie_key: &str) {
-        let cookie = cookie::Cookie::build(cookie_key, session_id)
-            .max_age(Duration::seconds(30))
-            .http_only(true)
-            .finish();
-        let val = header::HeaderValue::from_str(&cookie.encoded().to_string()).unwrap();
-        self.headers_mut().insert(header::SET_COOKIE, val);
-    }
 }
 
 trait RequestProxy {
-    fn get_session_id(&self, client_host: String, server_host: String) -> String;
-    fn set_uri(&mut self, server: &BackendConfig);
-    fn set_headers(&mut self, addr: &SocketAddr);
+    fn get_session_id(&self, client_host: &String, server_host: &String) -> String;
     fn get_server_host(&self) -> String;
 }
 
-impl RequestProxy for Request<Body> {
-    fn get_session_id(&self, client_host: String, server_host: String) -> String {
+impl RequestProxy for HttpRequest {
+    fn get_session_id(&self, client_host: &String, server_host: &String) -> String {
         self.headers()
             .get_all(header::COOKIE)
-            .iter()
-            .map(|value| cookie::Cookie::parse(value.to_str().unwrap()))
+            .into_iter()
+            .map(|value| Cookie::parse(value.to_str().unwrap()))
             .find(|val| {
                 if let Ok(cookie) = val {
                     cookie.name() == COOKIE_SESSION_KEY
@@ -194,20 +201,6 @@ impl RequestProxy for Request<Body> {
                 ))
             })
             .expect("At least one session ID should have been chosen.")
-    }
-
-    fn set_uri(&mut self, server: &BackendConfig) {
-        *(self.uri_mut()) = Uri::builder()
-            .scheme(server.scheme().as_str())
-            .authority(format!("{}:{}", server.ip(), server.port()).as_str())
-            .path_and_query(server.path().as_str())
-            .build()
-            .unwrap();
-    }
-
-    fn set_headers(&mut self, addr: &SocketAddr) {
-        let forwarded_val = header::HeaderValue::from_str(&addr.ip().to_string()).unwrap();
-        self.headers_mut().insert(header::FORWARDED, forwarded_val);
     }
 
     fn get_server_host(&self) -> String {

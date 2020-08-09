@@ -1,5 +1,5 @@
 use {
-    crate::{config::Config, Threadable, with_read_lock},
+    crate::{config::Config, with_read_lock, Threadable},
     std::{
         net::Shutdown,
         time::{Duration, Instant},
@@ -18,7 +18,7 @@ pub async fn run(config: Threadable<Config>) -> Result<(), Box<dyn std::error::E
             Duration::from_secs(config.health_check.timeout),
             config.health_check.interval,
             config.backends.clone(),
-        )	
+        )
     });
 
     for (_, server) in servers.into_iter() {

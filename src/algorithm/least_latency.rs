@@ -4,17 +4,19 @@ use {
         config::{BackendConfig, Config, ServerStatus},
     },
     async_trait::async_trait,
-    rand::Rng,
+    futures::{future::ready, stream, StreamExt},
     serde::Deserialize,
+    tokio::net::TcpStream,
 };
 
 #[derive(Default, Debug, Deserialize, Clone)]
-pub struct Random {
+pub struct LeastLatency {
+    pub current_server: usize,
     pub servers: Vec<BackendConfig>,
 }
 
 #[async_trait]
-impl Algorithm for Random {
+impl Algorithm for LeastLatency {
     fn configure(&mut self, config: &Config) {
         for (_, backend) in config.backends.iter() {
             self.servers.push(BackendConfig {
@@ -29,7 +31,18 @@ impl Algorithm for Random {
     }
 
     async fn server(&mut self, _: &RequestInfo) -> Option<BackendConfig> {
-        let i = rand::thread_rng().gen_range(0, self.servers.len());
-        self.servers.get(i).map(ToOwned::to_owned)
+        let buf = stream::iter(self.servers.clone())
+            .map(|server| async move {
+                TcpStream::connect(format!("{}:{}", server.ip, server.port))
+                    .await
+                    .is_ok()
+            })
+            .buffer_unordered(self.servers.len())
+            .enumerate()
+            .skip_while(|(_, res)| ready(!*res))
+            .next()
+            .await;
+
+        buf.and_then(move |(i, _)| self.servers.get(i).map(ToOwned::to_owned))
     }
 }

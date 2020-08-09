@@ -1,13 +1,15 @@
-#![feature(type_alias_impl_trait)]
+#![feature(type_alias_impl_trait, async_closure)]
 
 pub mod config;
 pub mod dynamic;
 pub mod error;
 pub mod health_check;
 pub mod request;
+pub mod timed_future;
 pub mod algorithm {
     pub mod algorithm;
     pub mod ip_hash;
+    pub mod least_latency;
     pub mod random;
     pub mod round_robin;
     pub mod trie;
@@ -18,9 +20,9 @@ use {
     algorithm::algorithm::{Algorithm, Strategy},
     config::*,
     request::*,
-    std::str::FromStr,
     std::{
         net::SocketAddr,
+        str::FromStr,
         sync::{Arc, RwLock},
     },
     tokio::try_join,
@@ -28,12 +30,12 @@ use {
 
 pub type Threadable<T> = Arc<RwLock<T>>;
 
-fn with_read_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&T) -> R) -> R {
+pub fn with_read_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&T) -> R) -> R {
     let strategy = &data.read().expect("Could not lock mutex.");
     f(strategy)
 }
 
-fn with_write_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&mut T) -> R) -> R {
+pub fn with_write_lock<R, T>(data: Threadable<T>, f: impl FnOnce(&mut T) -> R) -> R {
     let strategy = &mut data.write().expect("Could not lock mutex.");
     f(strategy)
 }
@@ -69,7 +71,7 @@ fn init() -> Result<(Threadable<Config>, Threadable<Strategy>), Box<dyn std::err
     ))
 }
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (config, strategy) = init()?;
     if let Err(e) = try_join!(

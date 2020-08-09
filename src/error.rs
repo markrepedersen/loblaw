@@ -1,7 +1,4 @@
-use {
-    crate::algorithm::algorithm::ServerSelectionError,
-    std::fmt
-};
+use {crate::algorithm::algorithm::ServerSelectionError, std::fmt};
 
 #[derive(Debug, Clone)]
 pub struct CookieError;
