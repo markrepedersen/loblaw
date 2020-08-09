@@ -1,4 +1,4 @@
-#![feature(type_alias_impl_trait, async_closure)]
+#![feature(type_alias_impl_trait, async_closure, bool_to_option)]
 
 pub mod config;
 pub mod dynamic;

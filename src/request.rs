@@ -72,7 +72,10 @@ impl RequestHandler {
             mappings.get(session_id).cloned()
         });
         match server {
-            Some(server) => server,
+            Some(server) => {
+                println!("[Cached] Found server: {}.", server.ip());
+                server
+            },
             None => {
                 let mut strategy = strategy.write().expect("Couldn't acquire the lock.");
                 let server = strategy
@@ -82,6 +85,7 @@ impl RequestHandler {
                 with_write_lock(mappings, |mappings| {
                     mappings.insert(session_id.clone(), server.clone())
                 });
+                println!("[No cache] Found server: {}.", server.ip());
                 server
             }
         }

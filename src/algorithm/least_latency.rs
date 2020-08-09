@@ -4,9 +4,11 @@ use {
         config::{BackendConfig, Config, ServerStatus},
     },
     async_trait::async_trait,
-    futures::{future::ready, stream, StreamExt},
+    futures::{stream, StreamExt},
     serde::Deserialize,
     tokio::net::TcpStream,
+    actix::clock::Instant,
+    futures::future::ready
 };
 
 #[derive(Default, Debug, Deserialize, Clone)]
@@ -31,18 +33,20 @@ impl Algorithm for LeastLatency {
     }
 
     async fn server(&mut self, _: &RequestInfo) -> Option<BackendConfig> {
-        let buf = stream::iter(self.servers.clone())
+        let mut times = stream::iter(self.servers.clone())
             .map(|server| async move {
-                TcpStream::connect(format!("{}:{}", server.ip, server.port))
+                let now = Instant::now();
+                TcpStream::connect(format!("{}:{}", server.ip(), server.port()))
                     .await
                     .is_ok()
+                    .then_some((server, now.elapsed()))
             })
             .buffer_unordered(self.servers.len())
-            .enumerate()
-            .skip_while(|(_, res)| ready(!*res))
-            .next()
-            .await;
+            .filter(|res| ready(res.is_some()))
+            .map(|res| res.unwrap())
+            .collect::<Vec<_>>().await;
 
-        buf.and_then(move |(i, _)| self.servers.get(i).map(ToOwned::to_owned))
+        times.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        times.first().map(|res| res.0.clone())
     }
 }

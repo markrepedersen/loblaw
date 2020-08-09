@@ -1,7 +1,7 @@
 use {
     crate::{
         algorithm::{
-            ip_hash::IPHash, random::Random, round_robin::RoundRobin, url_hash::UriPathHash,
+            ip_hash::IPHash, random::Random, round_robin::RoundRobin, url_hash::UriPathHash, least_latency::LeastLatency,
         },
         config::{BackendConfig, Config},
     },
@@ -59,7 +59,7 @@ pub enum Strategy {
     UriPathHash(UriPathHash),
     SourceIPHash(IPHash),
     LeastTraffic(RoundRobin),
-    LeastLatency(RoundRobin),
+    LeastLatency(LeastLatency),
 }
 
 impl Actor for Strategy {

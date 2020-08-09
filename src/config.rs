@@ -4,6 +4,7 @@ use {
     std::{collections::HashMap, fs::read_to_string, str::FromStr},
     strum_macros::{Display, EnumString},
 };
+use core::fmt;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
@@ -213,6 +214,12 @@ pub struct HealthCheckConfig {
     pub unhealthy_threshold: usize,
 }
 
+impl fmt::Display for HealthCheckConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:#?}", self)
+    }
+}
+
 impl Default for HealthCheckConfig {
     fn default() -> Self {
         Self {
@@ -237,6 +244,9 @@ impl Config {
         println!("- strategy: {}.", config.strategy);
         println!("- sticky_session: {}.", config.persistence_type);
         println!("- # replicas: {}.", config.replicas);
+        println!("- backends: {:#?}.", config.backends);
+        println!("- mappings: {:#?}.", config.mappings);
+        println!("- health check: {}.", config.health_check);
         Ok(config)
     }
 }

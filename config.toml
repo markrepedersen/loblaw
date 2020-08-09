@@ -1,6 +1,6 @@
 ip = "127.0.0.1"
 port = "8080"
-strategy = "RoundRobin"
+strategy = "LeastLatency"
 persistence = "default"
 
 [backends]
@@ -11,15 +11,15 @@ path = "/ip"
 scheme = "http"
 
 [backends.main2]
-ip = "3.220.112.94"
-port = "80"
-path = "/deny"
+ip = "127.0.0.1"
+port = "8080"
+path = "/"
 scheme = "http"
 
 [backends.main3]
-ip = "3.220.112.94"
+ip = "216.58.193.78"
 port = "80"
-path = "/image"
+path = "/"
 scheme = "http"
 
 [health_check]

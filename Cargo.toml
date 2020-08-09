@@ -16,6 +16,7 @@ pin-project = "0.4"
 actix-web = "2"
 actix-rt = "1"
 actix = "0.10.0-alpha.3"
+clocksource = "0.5"
 
 [dependencies.serde]
 version = "1.0"
